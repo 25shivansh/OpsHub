@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { config } from "../../config";
 import { db, teamMemberships, teams, users } from "../../db";
 import { UnauthorizedError } from "../../shared/errors";
-import { LoginInput } from "./auth.schemas";
+import { DemoLoginInput, LoginInput } from "./auth.schemas";
 
 export interface SafeUser {
   id: string;
@@ -24,6 +24,22 @@ export interface UserTeamSummary {
 }
 
 export class AuthService {
+  private createSession(user: SafeUser): { token: string; user: SafeUser } {
+    const token = jwt.sign(
+      {
+        sub: user.id,
+        email: user.email,
+        name: user.name,
+      },
+      config.JWT_SECRET,
+      {
+        expiresIn: config.JWT_EXPIRES_IN as any,
+      }
+    );
+
+    return { token, user };
+  }
+
   /**
    * Authenticates user with case-insensitive email and password.
    * Rejects inactive accounts and returns generic error to prevent user enumeration.
@@ -62,19 +78,6 @@ export class AuthService {
       throw new UnauthorizedError("Invalid email or password");
     }
 
-    // Generate signed JWT access token
-    const token = jwt.sign(
-      {
-        sub: user.id,
-        email: user.email,
-        name: user.name,
-      },
-      config.JWT_SECRET,
-      {
-        expiresIn: config.JWT_EXPIRES_IN as any,
-      }
-    );
-
     // Return safe user object (omit passwordHash completely)
     const safeUser: SafeUser = {
       id: user.id,
@@ -85,7 +88,37 @@ export class AuthService {
       updatedAt: user.updatedAt,
     };
 
-    return { token, user: safeUser };
+    return this.createSession(safeUser);
+  }
+
+  /**
+   * Issues a short-lived demo session for the four seeded personas in development.
+   * This keeps the demo password out of the browser bundle while leaving password
+   * authentication unchanged for normal accounts.
+   */
+  async loginDemo(input: DemoLoginInput): Promise<{ token: string; user: SafeUser }> {
+    if (config.NODE_ENV === "production") {
+      throw new UnauthorizedError("Demo sign-in is unavailable");
+    }
+
+    const [user] = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        isActive: users.isActive,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+      })
+      .from(users)
+      .where(sql`lower(${users.email}) = ${input.email.toLowerCase()}`)
+      .limit(1);
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedError("Demo account is unavailable");
+    }
+
+    return this.createSession(user);
   }
 
   /**

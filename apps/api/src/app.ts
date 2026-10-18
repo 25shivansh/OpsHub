@@ -7,6 +7,7 @@ import { notificationsRouter } from "./modules/notifications/notifications.route
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes";
 import { incidentsRouter } from "./modules/incidents/incidents.routes";
 import { slaPolicyRouter } from "./modules/sla/sla.routes";
+import { queueSimulatorRouter } from "./modules/queue-simulator/queue-simulator.routes";
 
 export function createApp(): Express {
   const app = express();
@@ -30,6 +31,7 @@ export function createApp(): Express {
   app.use("/api/v1/dashboard", dashboardRouter);
   app.use("/api/v1/incidents", incidentsRouter);
   app.use("/api/v1/teams", slaPolicyRouter);
+  app.use("/api/v1/queue", queueSimulatorRouter);
 
   // Catch-all 404 handler for unmatched routes
   app.use((_req, res) => {

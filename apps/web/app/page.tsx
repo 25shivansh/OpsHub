@@ -1,19 +1,24 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   api,
   User,
   WorkItem,
   DashboardData,
   NotificationItem,
+  ApiError,
   getStoredUser,
   setStoredUser,
-  setToken,
   clearToken,
 } from "./lib/api";
 import { IncidentCommandCenter } from "./components/IncidentCommandCenter";
 import { SlaDashboard } from "./components/SlaDashboard";
+import { QueueSimulatorDashboard } from "./components/QueueSimulatorDashboard";
+import { IncidentIntelligenceDashboard } from "./components/IncidentIntelligenceDashboard";
+import { DependencyBlastRadiusMap } from "./components/DependencyBlastRadiusMap";
+import { LandingPage } from "./components/LandingPage";
+import { OperationsOverview } from "./components/OperationsOverview";
 
 function formatSlaRemaining(
   deadlineStr: string,
@@ -80,11 +85,15 @@ const STATUS_COLUMNS: Array<{ key: WorkItem["status"]; label: string; color: str
 ];
 
 export default function NewtoniteApp() {
+  const sessionRestorePromise = useRef<Promise<User | null> | null>(null);
+
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<string>("MEMBER");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [showLandingOverview, setShowLandingOverview] = useState(false);
+  const [isAuthResolved, setIsAuthResolved] = useState(false);
 
   // Core team state
   const [teamId, setTeamId] = useState<string>("");
@@ -98,7 +107,15 @@ export default function NewtoniteApp() {
   const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"board" | "list">("board");
-  const [activeNavTab, setActiveNavTab] = useState<"workbench" | "sla" | "incidents">("workbench");
+  const [activeNavTab, setActiveNavTab] = useState<
+    | "overview"
+    | "workbench"
+    | "sla"
+    | "incidents"
+    | "queue"
+    | "intelligence"
+    | "blast-radius"
+  >("overview");
 
   // Notification state
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -126,10 +143,50 @@ export default function NewtoniteApp() {
 
   // 1. Initial Load & Auth verification
   useEffect(() => {
-    const user = getStoredUser();
-    if (user) {
-      setCurrentUser(user);
+    let isCurrent = true;
+
+    if (!sessionRestorePromise.current) {
+      sessionRestorePromise.current = (async () => {
+        const storedUser = getStoredUser();
+        if (!storedUser) {
+          clearToken();
+          return null;
+        }
+
+        try {
+          const session = await api.getCurrentUser();
+          setStoredUser(session.user);
+          return session.user;
+        } catch (err) {
+          if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+            clearToken();
+            return null;
+          }
+          throw err;
+        }
+      })();
     }
+
+    sessionRestorePromise.current
+      .then((user) => {
+        if (isCurrent && user) {
+          setCurrentUser(user);
+        }
+      })
+      .catch((err) => {
+        if (!isCurrent) return;
+        setAuthError("Session could not be verified. Please sign in again.");
+        console.warn("Could not verify stored user session:", err);
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsAuthResolved(true);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
   }, []);
 
   // 2. Fetch dashboard data & work items
@@ -202,9 +259,11 @@ export default function NewtoniteApp() {
     try {
       setIsLoggingIn(true);
       setAuthError(null);
-      const res = await api.login(email, "Newtonite@123!");
+      const res = await api.loginDemo(email);
       setCurrentUser(res.user);
-      showToast(`Signed in as ${res.user.name} (${email})`, "success");
+      setShowLandingOverview(false);
+      setActiveNavTab("overview");
+      showToast(`Signed in as ${res.user.name}`, "success");
     } catch (err: any) {
       setAuthError(err.message || "Login failed");
     } finally {
@@ -399,76 +458,49 @@ export default function NewtoniteApp() {
     return transitions;
   };
 
+  const activeNavCategory =
+    activeNavTab === "overview"
+      ? "overview"
+      : activeNavTab === "workbench"
+      ? "work"
+      : ["incidents", "intelligence", "blast-radius"].includes(activeNavTab)
+      ? "incidents"
+      : "reliability";
+
   // =========================================================================
-  // RENDER: Unauthenticated Splash / Quick Demo Login
+  // 1. RENDER: Initial Session Loading / Hydration Guard
   // =========================================================================
-  if (!currentUser) {
+  if (!isAuthResolved) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-black via-zinc-950 to-neutral-900 text-zinc-100 flex flex-col justify-center items-center p-6 font-sans">
-        {/* Glow effects */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-600/10 blur-[140px] rounded-full pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/3 w-[400px] h-[400px] bg-cyan-600/10 blur-[140px] rounded-full pointer-events-none" />
-
-        <div className="relative max-w-xl w-full bg-zinc-900/80 border border-zinc-800/80 backdrop-blur-2xl rounded-2xl p-8 shadow-2xl">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-black text-xl text-black shadow-lg shadow-indigo-500/20">
-              N
-            </div>
-            <div>
-              <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-                NEWTONITE
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 tracking-wider">
-                  OPS UNDER PRESSURE
-                </span>
-              </h1>
-              <p className="text-xs text-zinc-400">Team Work-Management & Mission-Critical Workflow Engine</p>
-            </div>
+      <div className="min-h-screen bg-[#0a0a0c] text-zinc-100 flex flex-col items-center justify-center p-6 font-sans">
+        <div className="flex flex-col items-center gap-4 animate-in fade-in duration-200">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-black text-xl text-black shadow-lg shadow-indigo-500/20">
+            N
           </div>
-
-          <p className="text-sm text-zinc-300 mb-6 leading-relaxed">
-            Select a verified demo account to experience role-governed state machines, atomic work claiming, and transactional event outbox processing:
-          </p>
-
-          {authError && (
-            <div className="mb-4 p-3 rounded-lg bg-rose-950/50 border border-rose-800/50 text-rose-300 text-xs">
-              {authError}
+          <div className="flex flex-col items-center gap-1.5">
+            <span className="font-black text-lg tracking-tight text-white">NEWTONITE</span>
+            <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              <span>Initializing operational session...</span>
             </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-            {DEMO_USERS.map((u) => (
-              <button
-                key={u.email}
-                onClick={() => handleDemoLogin(u.email)}
-                disabled={isLoggingIn}
-                className="group relative flex flex-col text-left p-4 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700/60 hover:border-zinc-500 transition-all shadow-sm hover:shadow-md cursor-pointer disabled:opacity-50"
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-semibold text-sm text-zinc-100 group-hover:text-white">
-                    {u.name}
-                  </span>
-                  <span
-                    className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-gradient-to-r ${u.color} text-white shadow-xs`}
-                  >
-                    {u.role}
-                  </span>
-                </div>
-                <span className="text-xs text-zinc-400 font-mono">{u.email}</span>
-                <span className="mt-2 text-[11px] text-indigo-400 font-medium flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                  Sign In &rarr;
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs text-zinc-500">
-            <span>Password: <code className="text-zinc-400 font-mono">Newtonite@123!</code></span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Supabase PostgreSQL Online
-            </span>
           </div>
         </div>
       </div>
+    );
+  }
+
+  // =========================================================================
+  // 2. RENDER: Unauthenticated Landing Page or Public Platform Overview
+  // =========================================================================
+  if (!currentUser || showLandingOverview) {
+    return (
+      <LandingPage
+        onLogin={handleDemoLogin}
+        isLoggingIn={isLoggingIn}
+        authError={authError}
+        currentUser={currentUser}
+        onReturnToConsole={() => setShowLandingOverview(false)}
+      />
     );
   }
 
@@ -502,181 +534,217 @@ export default function NewtoniteApp() {
       )}
 
       {/* 1. TOP NAV HEADER */}
-      <header className="sticky top-0 z-40 bg-zinc-950/80 border-b border-zinc-800/80 backdrop-blur-xl px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-black text-sm text-black shadow-md shadow-indigo-500/20">
-              N
-            </div>
-            <span className="font-black text-lg tracking-tight bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
-              NEWTONITE
-            </span>
-          </div>
-
-          <div className="h-5 w-px bg-zinc-800" />
-
-          {/* Active Team Pill */}
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            <span className="font-semibold text-zinc-300">{teamName}</span>
-            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">
-              {teamId ? teamId.slice(0, 8) : "core-ops"}
-            </span>
-          </div>
-
-          <div className="h-5 w-px bg-zinc-800 hidden md:block" />
-
-          {/* Primary View Switcher */}
-          <div className="flex rounded-xl bg-zinc-900/90 border border-zinc-800 p-1">
-            <button
-              onClick={() => setActiveNavTab("workbench")}
-              className={`flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeNavTab === "workbench"
-                  ? "bg-zinc-800 text-white shadow-sm"
-                  : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              <span>📋</span>
-              <span>Work Items</span>
-            </button>
-            <button
-              onClick={() => setActiveNavTab("sla")}
-              className={`flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeNavTab === "sla"
-                  ? "bg-gradient-to-r from-amber-900/80 to-orange-900/80 text-amber-200 border border-amber-700/60 shadow-sm"
-                  : "text-zinc-400 hover:text-amber-300"
-              }`}
-            >
-              <span>⏱️</span>
-              <span>SLA Engine</span>
-            </button>
-            <button
-              onClick={() => setActiveNavTab("incidents")}
-              className={`flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeNavTab === "incidents"
-                  ? "bg-gradient-to-r from-rose-900/80 to-red-900/80 text-rose-200 border border-rose-700/60 shadow-sm"
-                  : "text-zinc-400 hover:text-rose-300"
-              }`}
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+      <header className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/95 px-3 py-3 backdrop-blur-xl sm:px-6">
+        <div className="mx-auto max-w-[1600px]">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="grid h-8 w-8 place-items-center rounded-lg bg-indigo-500 text-sm font-black text-white">
+                N
+              </div>
+              <span className="text-base font-bold tracking-tight text-white sm:text-lg">
+                NEWTONITE
               </span>
-              <span>Incident Command</span>
-            </button>
+            </div>
+
+            {/* Active Team Pill */}
+            <div className="hidden items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs sm:flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span className="font-medium text-zinc-300">{teamName}</span>
+              <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[9px] text-zinc-500">
+                {teamId ? teamId.slice(0, 8) : "core-ops"}
+              </span>
+            </div>
           </div>
-        </div>
 
-        {/* User profile & Actions */}
-        <div className="flex items-center gap-3">
-          {/* Notifications Button */}
-          <div className="relative">
-            <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors cursor-pointer"
-              title="Notifications"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                />
-              </svg>
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 px-1.5 py-0.2 text-[9px] font-bold rounded-full bg-rose-600 text-white shadow-xs animate-bounce">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
+          <div className="mt-3 flex flex-col gap-3 border-t border-zinc-800 pt-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <nav aria-label="Workspace sections" className="flex min-w-0 gap-1 overflow-x-auto">
+                {[
+                  { id: "overview", label: "Overview", tab: "overview" },
+                  { id: "work", label: "Work Management", tab: "workbench" },
+                  { id: "incidents", label: "Incident Operations", tab: "incidents" },
+                  { id: "reliability", label: "Reliability & Platform", tab: "sla" },
+                ].map((category) => (
+                  <button
+                    key={category.id}
+                    onClick={() => setActiveNavTab(category.tab as typeof activeNavTab)}
+                    aria-current={activeNavCategory === category.id ? "page" : undefined}
+                    className={`shrink-0 rounded-md px-3 py-2 text-[10px] font-semibold transition-colors sm:text-[11px] cursor-pointer ${
+                      activeNavCategory === category.id
+                        ? "bg-zinc-800 text-white"
+                        : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+                    }`}
+                  >
+                    {category.label}
+                  </button>
+                ))}
+              </nav>
 
-            {/* Notification Drawer Popover */}
-            {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 z-50 text-xs animate-in fade-in zoom-in-95 duration-150">
-                <div className="flex items-center justify-between pb-3 border-b border-zinc-800 mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-white text-sm">Notifications</span>
-                    {unreadCount > 0 && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800 text-[10px]">
-                        {unreadCount} new
-                      </span>
-                    )}
-                  </div>
-                  {unreadCount > 0 && (
+              {(activeNavCategory === "incidents" || activeNavCategory === "reliability") && (
+                <div className="flex flex-wrap items-center gap-1 sm:border-l sm:border-zinc-800 sm:pl-2">
+                  {(activeNavCategory === "incidents"
+                    ? [
+                        { id: "incidents", label: "Command Center" },
+                        { id: "intelligence", label: "Intelligence" },
+                        { id: "blast-radius", label: "Blast Radius" },
+                      ]
+                    : [
+                        { id: "sla", label: "SLA Engine" },
+                        { id: "queue", label: "Queue Simulator" },
+                      ]
+                  ).map((item) => (
                     <button
-                      onClick={handleMarkAllNotifsRead}
-                      className="text-indigo-400 hover:text-indigo-300 font-medium cursor-pointer"
+                      key={item.id}
+                      onClick={() => setActiveNavTab(item.id as typeof activeNavTab)}
+                      aria-current={activeNavTab === item.id ? "page" : undefined}
+                      className={`rounded-md px-2.5 py-1.5 text-[10px] font-medium transition-colors cursor-pointer ${
+                        activeNavTab === item.id
+                          ? "text-indigo-200 bg-zinc-800/80"
+                          : "text-zinc-500 hover:text-zinc-200"
+                      }`}
                     >
-                      Mark all read
+                      {item.label}
                     </button>
-                  )}
+                  ))}
                 </div>
+              )}
+            </div>
 
-                <div className="max-h-72 overflow-y-auto space-y-2">
-                  {notifications.length === 0 ? (
-                    <p className="text-zinc-500 py-6 text-center">No notifications yet</p>
-                  ) : (
-                    notifications.map((notif) => (
-                      <div
-                        key={notif.id}
-                        onClick={() => !notif.readAt && handleMarkNotifRead(notif.id)}
-                        className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
-                          notif.readAt
-                            ? "bg-zinc-950/40 border-zinc-800/40 text-zinc-400"
-                            : "bg-zinc-800/80 border-indigo-500/30 text-zinc-200"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-white">
-                            {notif.event?.eventType || "ACTIVITY"}
-                          </span>
-                          <span className="text-[10px] text-zinc-500">
-                            {new Date(notif.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        </div>
-                        <p className="text-zinc-300">
-                          {notif.event?.itemTitle || "Work item update"}
-                        </p>
-                        {notif.event?.actorName && (
-                          <span className="text-[10px] text-zinc-400 mt-1 block">
-                            by {notif.event.actorName}
+            {/* User profile & Actions */}
+            <div className="flex items-center justify-between gap-2 lg:justify-end lg:gap-3">
+              {/* Notifications Button */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                  title="Notifications"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                    />
+                  </svg>
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 px-1.5 py-0.2 text-[9px] font-bold rounded-full bg-rose-600 text-white shadow-xs animate-bounce">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Notification Drawer Popover */}
+                {showNotifications && (
+                  <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 z-50 text-xs animate-in fade-in zoom-in-95 duration-150">
+                    <div className="flex items-center justify-between pb-3 border-b border-zinc-800 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-sm">Notifications</span>
+                        {unreadCount > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800 text-[10px]">
+                            {unreadCount} new
                           </span>
                         )}
                       </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={handleMarkAllNotifsRead}
+                          className="text-indigo-400 hover:text-indigo-300 font-medium cursor-pointer"
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
 
-          {/* Quick Account Switcher */}
-          <div className="flex items-center gap-2 pl-2 border-l border-zinc-800">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center font-bold text-xs text-white">
-                {currentUser.name.charAt(0)}
+                    <div className="max-h-72 overflow-y-auto space-y-2">
+                      {notifications.length === 0 ? (
+                        <p className="text-zinc-500 py-6 text-center">No notifications yet</p>
+                      ) : (
+                        notifications.map((notif) => (
+                          <div
+                            key={notif.id}
+                            onClick={() => !notif.readAt && handleMarkNotifRead(notif.id)}
+                            className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
+                              notif.readAt
+                                ? "bg-zinc-950/40 border-zinc-800/40 text-zinc-400"
+                                : "bg-zinc-800/80 border-indigo-500/30 text-zinc-200"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-semibold text-white">
+                                {notif.event?.eventType || "ACTIVITY"}
+                              </span>
+                              <span className="text-[10px] text-zinc-500">
+                                {new Date(notif.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                            <p className="text-zinc-300">
+                              {notif.event?.itemTitle || "Work item update"}
+                            </p>
+                            {notif.event?.actorName && (
+                              <span className="text-[10px] text-zinc-400 mt-1 block">
+                                by {notif.event.actorName}
+                              </span>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="hidden sm:block text-left">
-                <span className="block text-xs font-semibold text-zinc-200">{currentUser.name}</span>
-                <span className="block text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
-                  {userRole}
-                </span>
+
+              {/* Quick Account Switcher */}
+              <div className="flex items-center gap-2 pl-2 border-l border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center font-bold text-xs text-white">
+                    {currentUser.name.charAt(0)}
+                  </div>
+                  <div className="hidden sm:block text-left">
+                    <span className="block text-xs font-semibold text-zinc-200">{currentUser.name}</span>
+                    <span className="block text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                      {userRole}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowLandingOverview(true)}
+                  className="text-xs px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                  title="View public platform overview"
+                >
+                  <span>🏛️</span>
+                  <span className="hidden sm:inline">Platform Overview</span>
+                </button>
+
+                <button
+                  onClick={handleLogout}
+                  className="text-xs px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Sign Out
+                </button>
               </div>
             </div>
-
-            <button
-              onClick={handleLogout}
-              className="ml-2 text-xs px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            >
-              Sign Out
-            </button>
           </div>
         </div>
       </header>
 
       {/* 2. MAIN CONTENT AREA */}
-      {activeNavTab === "incidents" ? (
+      {activeNavTab === "overview" ? (
+        <OperationsOverview
+          currentUser={currentUser}
+          userRole={userRole}
+          teamId={teamId}
+          teamName={teamName}
+          workItems={items}
+          dashboard={dashboard}
+          loading={loading}
+          dataError={null}
+          onRefresh={() => void loadData()}
+          onNavigate={(tab) => setActiveNavTab(tab)}
+          showToast={showToast}
+        />
+      ) : activeNavTab === "incidents" ? (
         <main className="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col gap-6">
           <IncidentCommandCenter
             currentUser={currentUser}
@@ -694,6 +762,30 @@ export default function NewtoniteApp() {
           workItems={items}
           showToast={showToast}
           onRefreshWorkItems={loadData}
+        />
+      ) : activeNavTab === "queue" ? (
+        <QueueSimulatorDashboard
+          currentUser={currentUser}
+          userRole={userRole}
+          teamId={teamId}
+          showToast={showToast}
+        />
+      ) : activeNavTab === "intelligence" ? (
+        <IncidentIntelligenceDashboard
+          currentUser={currentUser}
+          userRole={userRole}
+          teamId={teamId}
+          showToast={showToast}
+          onNavigateToIncidents={() => setActiveNavTab("incidents")}
+          onNavigateToSla={() => setActiveNavTab("sla")}
+        />
+      ) : activeNavTab === "blast-radius" ? (
+        <DependencyBlastRadiusMap
+          currentUser={currentUser}
+          userRole={userRole}
+          teamId={teamId}
+          showToast={showToast}
+          onNavigateToIncidents={() => setActiveNavTab("incidents")}
         />
       ) : (
         <>

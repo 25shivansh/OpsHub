@@ -18,6 +18,17 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface CurrentUserResponse {
+  user: User;
+  teams: Array<{
+    teamId: string;
+    teamName: string;
+    teamSlug: string;
+    role: string;
+    joinedAt: string;
+  }>;
+}
+
 export type SlaRiskState = "ON_TRACK" | "AT_RISK" | "BREACHED" | "COMPLETED";
 
 export interface WorkItemSla {
@@ -90,6 +101,62 @@ export interface SlaMetrics {
     compliant: number;
     rate: number | null;
   };
+}
+
+// Queue Simulator Types
+export type QueueSimulationScenario =
+  | "TRANSIENT_TIMEOUT"
+  | "RATE_LIMIT_EXCEEDED"
+  | "DOWNSTREAM_500";
+
+export interface QueueJob {
+  id: string;
+  name: string;
+  isDemoJob: boolean;
+  scenario: string;
+  scenarioName: string;
+  attemptsMade: number;
+  maxAttempts: number;
+  failedReason: string | null;
+  timestamp: number;
+  processedOn: number | null;
+  finishedOn: number | null;
+  teamId?: string | null;
+  triggeredByUserId?: string | null;
+  state: "waiting" | "active" | "completed" | "failed" | "delayed" | "unknown";
+  recovered?: boolean;
+}
+
+export interface QueueHealth {
+  isAvailable: boolean;
+  status: "HEALTHY" | "DEGRADED" | "DISCONNECTED";
+  queueName: string;
+  redisEndpoint: string;
+  latencyMs: number | null;
+  counts: {
+    waiting: number;
+    active: number;
+    completed: number;
+    failed: number;
+    delayed: number;
+    paused: number;
+  };
+  outboxDbStats: {
+    pending: number;
+    published: number;
+    processed: number;
+    failed: number;
+  };
+  error: string | null;
+}
+
+export interface TriggerDemoJobInput {
+  scenario: QueueSimulationScenario;
+  scenarioName?: string;
+  errorMessage?: string;
+  simulateTransientRecovery?: boolean;
+  maxAttempts?: number;
+  teamId?: string;
 }
 
 export interface WorkItem {
@@ -274,6 +341,188 @@ export interface IncidentLinkedItem {
   linkedByName: string | null;
 }
 
+// =============================================================================
+// Feature 4: Explainable Incident Intelligence Types
+// =============================================================================
+
+export interface IntelligenceFinding {
+  id: string;
+  category:
+    | "SEVERITY_IMPACT"
+    | "SLA_BREACH"
+    | "COMMAND_RESPONSE"
+    | "WORK_ITEMS"
+    | "ACTIVITY_STALENESS";
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
+  finding: string;
+  evidence: string;
+  whyItMatters: string;
+  recommendedAction: string;
+}
+
+export interface RecommendedActionItem {
+  priority: "IMMEDIATE" | "HIGH" | "MEDIUM" | "ROUTINE";
+  action: string;
+  rationale: string;
+}
+
+export interface IncidentIntelligence {
+  incidentId: string;
+  incidentTitle: string;
+  severity: IncidentSeverity;
+  impact: IncidentImpact;
+  status: IncidentStatus;
+  isResolved: boolean;
+  ageMinutes: number;
+  ageFormatted: string;
+  declaredAt: string;
+  riskLevel: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  riskScore: number;
+  riskSummary: string;
+  riskFactors: string[];
+  slaStatus: {
+    hasSla: boolean;
+    overallRiskState: "ON_TRACK" | "AT_RISK" | "BREACHED" | "COMPLETED" | "NO_SLA";
+    breachedCount: number;
+    atRiskCount: number;
+    earliestDeadline: string | null;
+    isOverdue: boolean;
+  };
+  commandStatus: {
+    hasCommander: boolean;
+    commanderId: string | null;
+    commanderName: string | null;
+    responderCount: number;
+    rolesPresent: string[];
+    missingKeyRoles: string[];
+  };
+  linkedItemsSummary: {
+    total: number;
+    open: number;
+    inProgress: number;
+    awaitingApproval: number;
+    resolved: number;
+    closed: number;
+    unresolvedCount: number;
+  };
+  activityStatus: {
+    timelineEventsCount: number;
+    lastActivityAt: string;
+    minutesSinceLastActivity: number;
+    isStale: boolean;
+    stalenessThresholdMinutes: number;
+  };
+  findings: IntelligenceFinding[];
+  recommendedActions: RecommendedActionItem[];
+  assessedAt: string;
+}
+
+export interface IncidentIntelligenceListItem {
+  incidentId: string;
+  title: string;
+  severity: IncidentSeverity;
+  impact: IncidentImpact;
+  status: IncidentStatus;
+  declaredAt: string;
+  riskLevel: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  riskScore: number;
+  riskSummary: string;
+  hasCommander: boolean;
+  commanderName: string | null;
+  unresolvedItemsCount: number;
+  slaRiskState: "ON_TRACK" | "AT_RISK" | "BREACHED" | "COMPLETED" | "NO_SLA";
+  findingsCount: number;
+}
+
+export interface TeamIncidentsIntelligenceOverview {
+  teamId: string;
+  totalIncidents: number;
+  activeIncidents: number;
+  criticalRiskCount: number;
+  highRiskCount: number;
+  mediumRiskCount: number;
+  lowRiskCount: number;
+  slaBreachedCount: number;
+  unassignedCommanderCount: number;
+  staleIncidentsCount: number;
+  incidents: IncidentIntelligenceListItem[];
+}
+
+// =============================================================================
+// Feature 5: Dependency & Blast-Radius Map Types
+// =============================================================================
+
+export interface BlastRadiusNode {
+  id: string;
+  type: "INCIDENT_ROOT" | "LINKED_WORK_ITEM";
+  title: string;
+  itemType?: "TASK" | "INCIDENT" | "REQUEST";
+  status: string;
+  priority?: "LOW" | "NORMAL" | "HIGH" | "URGENT";
+  severity?: string;
+  impact?: string;
+  assignee?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+  sla?: {
+    riskState: "ON_TRACK" | "AT_RISK" | "BREACHED" | "COMPLETED" | "NO_SLA";
+    resolutionDeadline: string | null;
+    responseDeadline: string | null;
+    isOverdue: boolean;
+    breachedAt: string | null;
+  } | null;
+  linkedAt?: string;
+  linkedByName?: string | null;
+  isUnresolved: boolean;
+  isUrgentOrHigh: boolean;
+}
+
+export interface BlastRadiusEdge {
+  id: string;
+  source: string;
+  target: string;
+  relationshipType: "DIRECT_LINK" | "SHARED_ASSIGNEE";
+  label: string;
+  isDirect: boolean;
+  description: string;
+}
+
+export interface BlastRadiusSummary {
+  incidentId: string;
+  incidentTitle: string;
+  teamId: string;
+  severity: string;
+  impact: string;
+  status: string;
+  declaredAt: string;
+  resolvedAt: string | null;
+  commander: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+
+  totalDirectlyLinkedItems: number;
+  unresolvedCount: number;
+  resolvedCount: number;
+  urgentOrHighCount: number;
+  breachedSlaCount: number;
+  atRiskSlaCount: number;
+  uniqueAssigneesCount: number;
+  unassignedItemsCount: number;
+
+  blastRadiusLevel: "CRITICAL" | "HIGH" | "ELEVATED" | "CONTAINED" | "MINIMAL";
+  impactSummary: string;
+  riskHighlights: string[];
+
+  nodes: BlastRadiusNode[];
+  edges: BlastRadiusEdge[];
+
+  generatedAt: string;
+}
+
 export class ApiError extends Error {
   status: number;
   code?: string;
@@ -382,18 +631,33 @@ export const api = {
     return data;
   },
 
+  async loginDemo(email: string): Promise<AuthResponse> {
+    const data = await request<AuthResponse>("/auth/demo-login", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+    setToken(data.token);
+    setStoredUser(data.user);
+    return data;
+  },
+
+  async getCurrentUser(): Promise<CurrentUserResponse> {
+    return request<CurrentUserResponse>("/auth/me");
+  },
+
   async logout(): Promise<void> {
     clearToken();
   },
 
   // Dashboard
-  async getDashboardSummary(teamId: string): Promise<DashboardData> {
-    return request<DashboardData>(`/dashboard/summary?teamId=${teamId}`);
+  async getDashboardSummary(teamId?: string): Promise<DashboardData> {
+    const query = teamId && teamId.trim() ? `?teamId=${encodeURIComponent(teamId.trim())}` : "";
+    return request<DashboardData>(`/dashboard/summary${query}`);
   },
 
   // Work Items
   async listWorkItems(params: {
-    teamId: string;
+    teamId?: string;
     status?: string;
     priority?: string;
     assigneeId?: string;
@@ -401,14 +665,17 @@ export const api = {
     limit?: number;
   }): Promise<PaginatedWorkItems> {
     const query = new URLSearchParams();
-    query.set("teamId", params.teamId);
+    if (params.teamId && params.teamId.trim()) {
+      query.set("teamId", params.teamId.trim());
+    }
     if (params.status) query.set("status", params.status);
     if (params.priority) query.set("priority", params.priority);
     if (params.assigneeId) query.set("assigneeId", params.assigneeId);
     if (params.page) query.set("page", String(params.page));
     if (params.limit) query.set("limit", String(params.limit));
 
-    return request<PaginatedWorkItems>(`/items?${query.toString()}`);
+    const qs = query.toString();
+    return request<PaginatedWorkItems>(`/items${qs ? `?${qs}` : ""}`);
   },
 
   async getWorkItem(id: string): Promise<WorkItem> {
@@ -674,6 +941,66 @@ export const api = {
       {
         method: "DELETE",
       }
+    );
+  },
+
+  // Feature 3: Queue Failure & Recovery Simulator
+  async getQueueHealth(): Promise<{ data: QueueHealth }> {
+    return request<{ data: QueueHealth }>("/queue/health");
+  },
+
+  async getFailedQueueJobs(limit = 25): Promise<{ data: QueueJob[] }> {
+    return request<{ data: QueueJob[] }>(`/queue/jobs/failed?limit=${limit}`);
+  },
+
+  async getCompletedQueueJobs(limit = 25): Promise<{ data: QueueJob[] }> {
+    return request<{ data: QueueJob[] }>(`/queue/jobs/completed?limit=${limit}`);
+  },
+
+  async simulateQueueFailure(
+    data: TriggerDemoJobInput
+  ): Promise<{ data: QueueJob }> {
+    return request<{ data: QueueJob }>("/queue/simulate-failure", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async retryQueueJob(jobId: string): Promise<{ data: QueueJob }> {
+    return request<{ data: QueueJob }>(`/queue/jobs/${jobId}/retry`, {
+      method: "POST",
+    });
+  },
+
+  async cleanCompletedQueueJobs(): Promise<{ data: { cleanedCount: number } }> {
+    return request<{ data: { cleanedCount: number } }>("/queue/clean", {
+      method: "POST",
+    });
+  },
+
+  // Feature 4: Explainable Incident Intelligence
+  async getTeamIncidentsIntelligence(
+    teamId: string
+  ): Promise<{ data: TeamIncidentsIntelligenceOverview }> {
+    return request<{ data: TeamIncidentsIntelligenceOverview }>(
+      `/incidents/intelligence?teamId=${teamId}`
+    );
+  },
+
+  async getIncidentIntelligence(
+    incidentId: string
+  ): Promise<{ data: IncidentIntelligence }> {
+    return request<{ data: IncidentIntelligence }>(
+      `/incidents/${incidentId}/intelligence`
+    );
+  },
+
+  // Feature 5: Dependency & Blast-Radius Map
+  async getIncidentBlastRadius(
+    incidentId: string
+  ): Promise<{ data: BlastRadiusSummary }> {
+    return request<{ data: BlastRadiusSummary }>(
+      `/incidents/${incidentId}/blast-radius`
     );
   },
 };

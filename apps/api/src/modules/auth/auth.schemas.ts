@@ -12,4 +12,14 @@ export const loginSchema = z.object({
     .max(100, "Password must not exceed 100 characters"),
 });
 
+export const demoLoginSchema = z.object({
+  email: z.enum([
+    "admin@newtonite.dev",
+    "lead@newtonite.dev",
+    "member@newtonite.dev",
+    "viewer@newtonite.dev",
+  ]),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
+export type DemoLoginInput = z.infer<typeof demoLoginSchema>;

@@ -59,6 +59,44 @@ export function getOutboxQueue(): Queue {
 }
 
 /**
+ * Checks Redis connectivity and round-trip latency.
+ * Uses a 1500ms timeout to avoid hanging when Redis is offline.
+ */
+export async function checkRedisHealth(): Promise<{
+  connected: boolean;
+  latencyMs: number | null;
+  error: string | null;
+}> {
+  const client = getRedisClient();
+  try {
+    const start = Date.now();
+    const pingPromise = client.ping();
+    const timeoutPromise = new Promise<string>((_, reject) =>
+      setTimeout(() => reject(new Error("Redis ping timed out after 1500ms")), 1500)
+    );
+    const res = await Promise.race([pingPromise, timeoutPromise]);
+    if (res === "PONG") {
+      return {
+        connected: true,
+        latencyMs: Date.now() - start,
+        error: null,
+      };
+    }
+    return {
+      connected: false,
+      latencyMs: null,
+      error: `Unexpected ping response: ${res}`,
+    };
+  } catch (err: any) {
+    return {
+      connected: false,
+      latencyMs: null,
+      error: err.message || "Cannot connect to Redis",
+    };
+  }
+}
+
+/**
  * Initializes the BullMQ Worker to process outbox event jobs.
  */
 export function startOutboxWorker(): Worker {
@@ -66,7 +104,38 @@ export function startOutboxWorker(): Worker {
     const connection = getRedisClient();
     outboxWorker = new Worker(
       OUTBOX_QUEUE_NAME,
-      async (job: Job<{ outboxEventId: string }>): Promise<ProcessEventResult> => {
+      async (job: Job): Promise<ProcessEventResult> => {
+        // Handle Demo Simulation Jobs
+        if (job.name === "DEMO_SIMULATION" || job.data?.isDemoJob) {
+          if (config.NODE_ENV === "production") {
+            throw new Error("Demo job execution is forbidden in production");
+          }
+
+          // If job was manually replayed / recovered
+          if (job.data?.recovered) {
+            return {
+              outboxEventId: `demo-${job.id}`,
+              status: "PROCESSED",
+              notificationsCreated: 0,
+            };
+          }
+
+          // If transient failure simulation: fail on 1st attempt, self-heal on 2nd attempt
+          if (job.data?.simulateTransientRecovery && job.attemptsMade >= 1) {
+            return {
+              outboxEventId: `demo-${job.id}`,
+              status: "PROCESSED",
+              notificationsCreated: 0,
+            };
+          }
+
+          // Throw intentional simulated failure
+          throw new Error(
+            job.data?.errorMessage ||
+              `[SIMULATED] Failure for scenario: ${job.data?.scenario || "DEMO"}`
+          );
+        }
+
         const { outboxEventId } = job.data;
 
         // Fetch outbox event from database

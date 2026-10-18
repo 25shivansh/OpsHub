@@ -21,8 +21,8 @@ export const slaPolicyRouter = Router();
 slaPolicyRouter.get(
   "/:teamId/sla/policies",
   authenticate,
-  requireTeamRole((req) => req.params.teamId as string, "VIEWER"),
   validate({ params: teamIdParamSchema }),
+  requireTeamRole((req) => req.params.teamId as string, "VIEWER"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const teamId = req.params.teamId as string;
@@ -42,8 +42,8 @@ slaPolicyRouter.get(
 slaPolicyRouter.get(
   "/:teamId/sla/metrics",
   authenticate,
-  requireTeamRole((req) => req.params.teamId as string, "VIEWER"),
   validate({ params: teamIdParamSchema }),
+  requireTeamRole((req) => req.params.teamId as string, "VIEWER"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const teamId = req.params.teamId as string;
@@ -63,8 +63,8 @@ slaPolicyRouter.get(
 slaPolicyRouter.post(
   "/:teamId/sla/policies",
   authenticate,
-  requireTeamRole((req) => req.params.teamId as string, "LEAD"),
   validate({ params: teamIdParamSchema, body: createSlaPolicySchema }),
+  requireTeamRole((req) => req.params.teamId as string, "LEAD"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const teamId = req.params.teamId as string;
@@ -84,8 +84,8 @@ slaPolicyRouter.post(
 slaPolicyRouter.patch(
   "/:teamId/sla/policies/:policyId",
   authenticate,
-  requireTeamRole((req) => req.params.teamId as string, "LEAD"),
   validate({ params: policyIdParamSchema, body: updateSlaPolicySchema }),
+  requireTeamRole((req) => req.params.teamId as string, "LEAD"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const teamId = req.params.teamId as string;
@@ -110,8 +110,8 @@ slaPolicyRouter.patch(
 slaPolicyRouter.patch(
   "/:teamId/sla/policies/:policyId/active",
   authenticate,
-  requireTeamRole((req) => req.params.teamId as string, "LEAD"),
   validate({ params: policyIdParamSchema, body: toggleSlaPolicyActiveSchema }),
+  requireTeamRole((req) => req.params.teamId as string, "LEAD"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const teamId = req.params.teamId as string;

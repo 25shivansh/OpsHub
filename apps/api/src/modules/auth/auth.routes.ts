@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from "express";
 import { authenticate, AuthenticatedRequest, validate } from "../../middleware";
-import { loginSchema } from "./auth.schemas";
+import { demoLoginSchema, loginSchema } from "./auth.schemas";
 import { authService } from "./auth.service";
 
 export const authRouter = Router();
@@ -15,6 +15,23 @@ authRouter.post(
   async (req, res: Response, next: NextFunction): Promise<void> => {
     try {
       const result = await authService.login(req.body);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /api/v1/auth/demo-login
+ * Issues a session for a seeded demo persona in non-production environments.
+ */
+authRouter.post(
+  "/demo-login",
+  validate({ body: demoLoginSchema }),
+  async (req, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const result = await authService.loginDemo(req.body);
       res.status(200).json(result);
     } catch (err) {
       next(err);

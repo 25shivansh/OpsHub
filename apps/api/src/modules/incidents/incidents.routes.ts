@@ -4,6 +4,7 @@ import {
   AuthenticatedRequest,
   validate,
   idempotency,
+  requireTeamRole,
 } from "../../middleware";
 import {
   addResponderSchema,
@@ -16,8 +17,11 @@ import {
   listIncidentsQuerySchema,
   transitionIncidentSchema,
   updateIncidentSchema,
+  incidentIntelligenceQuerySchema,
 } from "./incidents.schemas";
 import { incidentsService } from "./incidents.service";
+import { incidentsIntelligenceService } from "./incidents-intelligence.service";
+import { incidentsBlastRadiusService } from "./incidents-blast-radius.service";
 
 export const incidentsRouter = Router();
 
@@ -40,6 +44,28 @@ incidentsRouter.get(
 );
 
 /**
+ * GET /api/v1/incidents/intelligence
+ * Retrieves deterministic explainable intelligence for all incidents in a team.
+ */
+incidentsRouter.get(
+  "/intelligence",
+  authenticate,
+  validate({ query: incidentIntelligenceQuerySchema }),
+  requireTeamRole((req) => req.query.teamId as string, "VIEWER"),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const teamId = req.query.teamId as string;
+      const result = await incidentsIntelligenceService.getTeamOverview(teamId, {
+        requestingUserId: req.user!.id,
+      });
+      res.status(200).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
  * POST /api/v1/incidents
  * Declares a new incident, assigns the commander, and logs initial timeline event.
  */
@@ -52,6 +78,48 @@ incidentsRouter.post(
     try {
       const result = await incidentsService.declareIncident(req.user!, req.body);
       res.status(201).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/v1/incidents/:id/intelligence
+ * Evaluates explainable intelligence and generates 4-part findings for an incident.
+ */
+incidentsRouter.get(
+  "/:id/intelligence",
+  authenticate,
+  validate({ params: incidentParamsSchema }),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const result = await incidentsIntelligenceService.evaluateIncidentIntelligence(id, {
+        requestingUserId: req.user!.id,
+      });
+      res.status(200).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/v1/incidents/:id/blast-radius
+ * Retrieves the dependency graph and blast-radius evaluation for an incident.
+ */
+incidentsRouter.get(
+  "/:id/blast-radius",
+  authenticate,
+  validate({ params: incidentParamsSchema }),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const result = await incidentsBlastRadiusService.getIncidentBlastRadius(id, {
+        requestingUserId: req.user!.id,
+      });
+      res.status(200).json({ data: result });
     } catch (err) {
       next(err);
     }

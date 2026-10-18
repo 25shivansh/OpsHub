@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --background: #f8f9fb;
+  --foreground: #111827;
+  --ops-background: #0a0a0c;
+  --ops-surface: #111318;
+  --ops-raised: #181a20;
+  --ops-border: #292c34;
+  --ops-muted: #9399a6;
+  --ops-accent: #7775f5;
 }
 
 @theme inline {
@@ -12,15 +19,91 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
 }
 
 body {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #818cf8;
+  outline-offset: 2px;
+}
+
+.landing-page {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.landing-page ::selection {
+  background: #c7d2fe;
+  color: #111827;
+}
+
+.ops-shell {
+  min-height: 100vh;
+  overflow-x: clip;
+  background: var(--ops-background);
+  color: #f4f4f5;
+  color-scheme: dark;
+}
+
+.ops-shell table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.ops-shell thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.ops-shell input,
+.ops-shell select,
+.ops-shell textarea {
+  color-scheme: dark;
+  border-color: var(--ops-border);
+}
+
+.ops-shell input::placeholder,
+.ops-shell textarea::placeholder {
+  color: #717785;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

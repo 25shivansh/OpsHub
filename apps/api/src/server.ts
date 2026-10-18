@@ -7,6 +7,7 @@ import {
   closeOutboxQueue,
   startSlaEvaluationScheduler,
   stopSlaEvaluationScheduler,
+  startOutboxWorker,
 } from "./jobs";
 
 const app = createApp();
@@ -16,6 +17,7 @@ const server = app.listen(config.PORT, () => {
   if (config.NODE_ENV !== "test") {
     startOutboxRelay(3000);
     startSlaEvaluationScheduler(60000);
+    startOutboxWorker();
   }
 });
 

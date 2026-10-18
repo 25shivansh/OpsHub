@@ -183,6 +183,14 @@ export const unlinkWorkItemSchema = z.object({
 });
 
 // =============================================================================
+// Incident Intelligence
+// =============================================================================
+
+export const incidentIntelligenceQuerySchema = z.object({
+  teamId: z.string().uuid("Invalid team ID format"),
+});
+
+// =============================================================================
 // Inferred types
 // =============================================================================
 
@@ -196,3 +204,4 @@ export type RemoveResponderInput = z.infer<typeof removeResponderSchema>;
 export type AddTimelineNoteInput = z.infer<typeof addTimelineNoteSchema>;
 export type LinkWorkItemInput = z.infer<typeof linkWorkItemSchema>;
 export type UnlinkWorkItemInput = z.infer<typeof unlinkWorkItemSchema>;
+export type IncidentIntelligenceQuery = z.infer<typeof incidentIntelligenceQuerySchema>;

@@ -30,6 +30,9 @@ export function hasMinimumRole(
   return (ROLE_HIERARCHY[userRole] ?? -1) >= (ROLE_HIERARCHY[minRole] ?? 99);
 }
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Resolves team membership for a user in a team.
  */
@@ -37,6 +40,10 @@ export async function getTeamMembership(
   userId: string,
   teamId: string
 ): Promise<{ teamId: string; role: TeamMembershipRole } | null> {
+  if (!teamId || typeof teamId !== "string" || !UUID_REGEX.test(teamId)) {
+    return null;
+  }
+
   const [membership] = await db
     .select({
       teamId: teamMemberships.teamId,

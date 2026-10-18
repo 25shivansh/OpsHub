@@ -7,4 +7,7 @@ export * from "./work-items/work-items.schemas";
 export * from "./incidents/incidents.routes";
 export * from "./incidents/incidents.service";
 export * from "./incidents/incidents.schemas";
+export * from "./incidents/incidents-intelligence.service";
+export * from "./incidents/incidents-blast-radius.service";
 export * from "./sla";
+export * from "./queue-simulator";

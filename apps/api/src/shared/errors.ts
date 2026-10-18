@@ -69,7 +69,7 @@ export function sendError(res: Response, error: AppError | Error): void {
   }
 
   // Generic internal server error (never leak raw SQL, stack traces, or secrets)
-  console.error("Unhandled server error:", error.message);
+  console.error("Unhandled server error:", error.stack || error.message);
   res.status(500).json({
     error: {
       code: "INTERNAL_SERVER_ERROR",
