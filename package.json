@@ -2,30 +2,21 @@
   "name": "opshub",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "dotenv": "^18.0.8",
-    "drizzle-orm": "^1.0.0-rc.4",
-    "next": "16.4.2",
-    "postgres": "^3.4.9",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
-  },
-  "devDependencies": {
-    "@tailwindcss/turbopack": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "drizzle-kit": "^1.0.0-rc.4",
-    "eslint": "^9",
-    "eslint-config-next": "16.4.2",
-    "tailwindcss": "^4",
-    "tsx": "^4.23.15",
-    "typescript": "^5"
+    "dev:web": "npm run dev --workspace=web",
+    "dev:api": "npm run dev --workspace=api",
+    "build:web": "npm run build --workspace=web",
+    "build:api": "npm run build --workspace=api",
+    "typecheck:web": "npm run typecheck --workspace=web",
+    "typecheck:api": "npm run typecheck --workspace=api",
+    "db:generate": "npm run db:generate --workspace=api",
+    "db:migrate": "npm run db:migrate --workspace=api",
+    "db:seed": "npm run db:seed --workspace=api",
+    "test:api": "npm run test --workspace=api",
+    "lint": "npm run lint --workspaces --if-present"
   }
 }
